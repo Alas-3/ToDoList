@@ -26,6 +26,11 @@ def add_task(conn, listbox, entry_name, entry_due_date, priority_combo, entry_no
     priority = priority_combo.get()
     notes = entry_notes.get("1.0", tk.END)
     
+    # Check if any of the entry fields are empty
+    if not task_name or not due_date or priority == "Select Priority Level" or not notes.strip():
+        messagebox.showerror("Error", "Please fill out all fields to add a new task.")
+        return
+    
     conn.execute("INSERT INTO tasks (task_name, due_date, priority, notes) VALUES (?, ?, ?, ?)",
                  (task_name, due_date, priority, notes))
     conn.commit()
@@ -35,7 +40,7 @@ def add_task(conn, listbox, entry_name, entry_due_date, priority_combo, entry_no
     view_tasks(conn, listbox)
     entry_name.delete(0, tk.END)
     entry_due_date.set_date(datetime.today())
-    priority_combo.set("Medium")
+    priority_combo.set("Select Priority Level")
     entry_notes.delete("1.0", tk.END)
 
 # Function to view all tasks
@@ -100,117 +105,117 @@ def open_task_details_window(conn, listbox):
         if row:
             details_window = tk.Toplevel()
             details_window.title("Task Details")
+
             frame = tk.Frame(details_window)
             frame.pack(padx=10, pady=10)
 
-            tk.Label(frame, text="Task Name:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-            tk.Label(frame, text="Due Date:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
-            tk.Label(frame, text="Priority:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
-            tk.Label(frame, text="Notes:").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+            tk.Label(frame, text="Task Name:", font=("Arial", 12, "bold")).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+            tk.Label(frame, text="Due Date:", font=("Arial", 12, "bold")).grid(row=1, column=0, padx=5, pady=5, sticky="w")
+            tk.Label(frame, text="Priority:", font=("Arial", 12, "bold")).grid(row=2, column=0, padx=5, pady=5, sticky="w")
+            tk.Label(frame, text="Notes:", font=("Arial", 12, "bold")).grid(row=3, column=0, padx=5, pady=5, sticky="w")
 
-            entry_name = tk.Entry(frame, width=50)
-            entry_name.grid(row=0, column=1, padx=5, pady=5)
+            entry_name = tk.Entry(frame, width=50, borderwidth=2, relief="groove", bg="white")
+            entry_name.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
             entry_name.insert(tk.END, row[1])
 
-            entry_due_date = tk.Entry(frame, width=20)
-            entry_due_date.grid(row=1, column=1, padx=5, pady=5)
+            entry_due_date = tk.Entry(frame, width=20, borderwidth=2, relief="groove", bg="white")
+            entry_due_date.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
             entry_due_date.insert(tk.END, row[2])
 
-            priority_values = ["High", "Medium", "Low"]
-            entry_priority = ttk.Combobox(frame, values=priority_values, width=17)
-            entry_priority.grid(row=2, column=1, padx=5, pady=5)
+            priority_values = ["Select Priority Level", "High", "Medium", "Low"]
+            entry_priority = ttk.Combobox(frame, values=priority_values, width=25, state="readonly")
+            entry_priority.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
             entry_priority.set(row[3])
 
-            entry_notes = tk.Text(frame, width=50, height=5, wrap="word")  # Enable word wrapping
-            entry_notes.grid(row=3, column=1, padx=5, pady=5)
+            entry_notes = tk.Text(frame, width=50, height=10, wrap="word", borderwidth=2, relief="groove", bg="white")  
+            entry_notes.grid(row=3, column=1, padx=5, pady=5, sticky="nsew")
             entry_notes.insert(tk.END, row[4])
 
-            # Add vertical scrollbar for the notes text entry
             scrollbar = tk.Scrollbar(frame, command=entry_notes.yview)
             scrollbar.grid(row=3, column=2, sticky='ns')
             entry_notes.config(yscrollcommand=scrollbar.set)
 
-            tk.Button(frame, text="Edit Task", command=lambda: edit_task(conn, listbox, task_id, entry_name.get(), entry_due_date.get(), entry_priority.get(), entry_notes.get("1.0", tk.END))).grid(row=4, column=0, columnspan=2, padx=5, pady=5)
-            tk.Button(frame, text="Done", command=details_window.destroy).grid(row=5, column=0, columnspan=2, padx=5, pady=5)
+            tk.Button(frame, text="Edit Task", command=lambda: edit_task(conn, listbox, task_id, entry_name.get(), entry_due_date.get(), entry_priority.get(), entry_notes.get("1.0", tk.END))).grid(row=4, column=0, padx=5, pady=5, sticky="ew")
+            tk.Button(frame, text="Done", command=details_window.destroy).grid(row=4, column=1, padx=5, pady=5, sticky="ew")
             if not row[5]:  # If the task is not completed
-                tk.Button(frame, text="Mark Task as Completed", command=lambda: mark_task_completed(conn, listbox, task_id, details_window)).grid(row=6, column=0, columnspan=2, padx=5, pady=5)
+                tk.Button(frame, text="Mark Task as Completed", command=lambda: mark_task_completed(conn, listbox, task_id, details_window)).grid(row=4, column=2, padx=5, pady=5, sticky="ew")
             else:
-                tk.Button(frame, text="Undo Completion", command=lambda: mark_task_incomplete(conn, listbox, task_id, details_window)).grid(row=6, column=0, columnspan=2, padx=5, pady=5)
+                tk.Button(frame, text="Undo Completion", command=lambda: mark_task_incomplete(conn, listbox, task_id, details_window)).grid(row=4, column=2, padx=5, pady=5, sticky="ew")
 
 # Function to create and run the app
 def run_app():
     conn = connect_db()
     root = tk.Tk()
     root.title("To-Do List App")
+    root.attributes('-fullscreen', True)  
 
     style = ttk.Style()
-    style.theme_use("clam")  # Choose a ttk theme
+    style.theme_use("clam")  
 
-    frame = ttk.Frame(root)
-    frame.pack(padx=10, pady=10)
+    main_frame = ttk.Frame(root)
+    main_frame.pack(expand=True, fill="both")
 
-    # Entry widgets
-    entry_name = ttk.Entry(frame, width=50)
-    entry_name.grid(row=0, column=1, padx=5, pady=5)
+    input_frame = ttk.Frame(main_frame)
+    input_frame.pack(expand=False, fill="x", padx=10, pady=10)
 
-    entry_due_date = DateEntry(frame, width=20, date_pattern="yyyy-mm-dd")
-    entry_due_date.grid(row=1, column=1, padx=5, pady=5)
+    entry_name = ttk.Entry(input_frame, width=50, font=("Arial", 12))
+    entry_name.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
-    priority_values = ["High", "Medium", "Low"]  # List of priority options
-    priority_combo = ttk.Combobox(frame, values=priority_values, width=17)
-    priority_combo.grid(row=2, column=1, padx=5, pady=5)
-    priority_combo.set("Medium")  # Set default value
+    entry_due_date = DateEntry(input_frame, width=20, font=("Arial", 12), date_pattern="yyyy-mm-dd")
+    entry_due_date.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
 
-    entry_notes = tk.Text(frame, width=50, height=5, wrap="word")  # Enable word wrapping
-    entry_notes.grid(row=3, column=1, padx=5, pady=5)
+    priority_values = ["Select Priority Level", "High", "Medium", "Low"]
+    entry_priority = ttk.Combobox(input_frame, values=priority_values, width=25, font=("Arial", 12), state="readonly")
+    entry_priority.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+    entry_priority.set("Select Priority Level")
 
-    # Label widgets
-    tk.Label(frame, text="Task Name:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-    tk.Label(frame, text="Due Date:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
-    tk.Label(frame, text="Priority:").grid(row=2, column=0, padx=5, pady=5, sticky="e")
-    tk.Label(frame, text="Notes:").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+    entry_notes = tk.Text(input_frame, width=50, height=5, wrap="word", font=("Arial", 12), borderwidth=2, relief="groove", bg="white")  
+    entry_notes.grid(row=3, column=1, padx=5, pady=5, sticky="nsew")
 
-    # Listbox widget
-    listbox = tk.Listbox(frame, width=70, height=15)
-    listbox.grid(row=6, column=0, columnspan=2, padx=5, pady=5)
+    tk.Label(input_frame, text="Task Name:", font=("Arial", 12, "bold")).grid(row=0, column=0, padx=5, pady=5, sticky="e")
+    tk.Label(input_frame, text="Due Date:", font=("Arial", 12, "bold")).grid(row=1, column=0, padx=5, pady=5, sticky="e")
+    tk.Label(input_frame, text="Priority:", font=("Arial", 12, "bold")).grid(row=2, column=0, padx=5, pady=5, sticky="e")
+    tk.Label(input_frame, text="Notes:", font=("Arial", 12, "bold")).grid(row=3, column=0, padx=5, pady=5, sticky="e")
+
+    add_button = ttk.Button(input_frame, text="Add Task", command=lambda: add_task(conn, listbox, entry_name, entry_due_date, entry_priority, entry_notes), width=15)
+    add_button.grid(row=4, column=0, padx=5, pady=5, sticky="ew")
+
+    view_button = ttk.Button(input_frame, text="View All Tasks", command=lambda: view_tasks(conn, listbox), width=15)
+    view_button.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
+
+    filter_button = ttk.Button(input_frame, text="Filter", command=lambda: filter_tasks(conn, listbox), width=15)
+    filter_button.grid(row=4, column=2, padx=5, pady=5, sticky="ew")
+
+    close_button = ttk.Button(input_frame, text="Close", command=root.destroy, width=15)
+    close_button.grid(row=4, column=3, padx=5, pady=5, sticky="ew")
+
+    listbox = tk.Listbox(main_frame, width=70, height=15, font=("Arial", 12))
+    listbox.pack(expand=True, fill="both", padx=10, pady=10)
     listbox.bind("<<ListboxSelect>>", lambda event: open_task_details_window(conn, listbox))
 
-    # Scrollbar widget
-    scrollbar = tk.Scrollbar(frame, orient=tk.VERTICAL)
-    scrollbar.config(command=listbox.yview)
-    scrollbar.grid(row=6, column=2, sticky="ns")
-
+    scrollbar = tk.Scrollbar(main_frame, orient=tk.VERTICAL, command=listbox.yview)
+    scrollbar.pack(side="right", fill="y")
     listbox.config(yscrollcommand=scrollbar.set)
-
-    # Buttons
-    ttk.Button(frame, text="Add Task", command=lambda: add_task(conn, listbox, entry_name, entry_due_date, priority_combo, entry_notes)).grid(row=4, column=0, columnspan=2, padx=5, pady=5)
-    ttk.Button(frame, text="View All Tasks", command=lambda: view_tasks(conn, listbox)).grid(row=7, column=0, padx=5, pady=5)
-    ttk.Button(frame, text="Filter", command=lambda: filter_tasks(conn, listbox)).grid(row=7, column=1, padx=5, pady=5)
 
     root.mainloop()
 
 # Function to filter tasks
 def filter_tasks(conn, listbox):
-    # Create a filter window
     filter_window = tk.Toplevel()
     filter_window.title("Filter Tasks")
     frame = tk.Frame(filter_window)
     frame.pack(padx=10, pady=10)
 
-    # Priority filter
-    priority_filter = ttk.Combobox(frame, values=["All", "High", "Medium", "Low"])
+    priority_filter = ttk.Combobox(frame, values=["All", "High", "Medium", "Low"], font=("Arial", 12), state="readonly")
     priority_filter.grid(row=0, column=0, padx=5, pady=5)
     priority_filter.set("All")
 
-    # Completion status filter
-    completion_filter = ttk.Combobox(frame, values=["All", "Completed", "Not Completed"])
+    completion_filter = ttk.Combobox(frame, values=["All", "Completed", "Not Completed"], font=("Arial", 12), state="readonly")
     completion_filter.grid(row=0, column=1, padx=5, pady=5)
     completion_filter.set("All")
 
-    # Apply filter button
-    ttk.Button(frame, text="Apply Filter", command=lambda: apply_filter(conn, listbox, priority_filter.get(), completion_filter.get())).grid(row=1, column=0, columnspan=2, padx=5, pady=5)
-    # Close button
-    ttk.Button(frame, text="Close", command=filter_window.destroy).grid(row=2, column=0, columnspan=2, padx=5, pady=5)
+    ttk.Button(frame, text="Apply Filter", command=lambda: apply_filter(conn, listbox, priority_filter.get(), completion_filter.get()), width=15).grid(row=1, column=0, columnspan=2, padx=5, pady=5)
+    ttk.Button(frame, text="Close", command=filter_window.destroy, width=15).grid(row=2, column=0, columnspan=2, padx=5, pady=5)
 
 # Function to apply the selected filter
 def apply_filter(conn, listbox, priority_filter, completion_filter):
