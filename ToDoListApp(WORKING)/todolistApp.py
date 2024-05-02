@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 import sqlite3
 import re
+from tkcalendar import DateEntry
 
 def create_table():
     conn = sqlite3.connect('todo.db')
@@ -9,11 +10,11 @@ def create_table():
     c.execute('''CREATE TABLE IF NOT EXISTS users
                  (username TEXT PRIMARY KEY, password TEXT, first_name TEXT, last_name TEXT, email TEXT, age INTEGER, sex TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS tasks
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, start_date TEXT, end_date TEXT, priority TEXT, description TEXT, user_id INTEGER, FOREIGN KEY(user_id) REFERENCES users(rowid))''')
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, start_date TEXT, end_date TEXT, priority TEXT, description TEXT, status TEXT, user_id INTEGER, FOREIGN KEY(user_id) REFERENCES users(rowid))''')
     conn.commit()
     conn.close()
 
-def login():
+def login(username_entry, password_entry):
     username = username_entry.get()
     password = password_entry.get()
     
@@ -34,15 +35,117 @@ def login():
         messagebox.showerror("Login Failed", "Invalid username or password")
 
 def open_task_list(user_id):
+    def mark_as_completed():  
+        selected_item = tree.selection()
+        if not selected_item:
+            messagebox.showwarning("No Task Selected", "Please select a task.")
+            return
+        
+        selected_task_id = tree.item(selected_item, "values")[0]
+        
+        conn = sqlite3.connect('todo.db')
+        c = conn.cursor()
+        c.execute("UPDATE tasks SET status='Completed' WHERE id=?", (selected_task_id,))
+        conn.commit()
+        
+        # Update the Treeview display
+        tree.item(selected_item, values=(tree.item(selected_item, "values")[:-1] + ('Completed',)))
+        
+        conn.close()
+        
+        messagebox.showinfo("Task Status Updated", "Task has been marked as Completed.")
+
+        # Refresh the treeview
+        refresh_treeview()
+
+    def undo_completion():
+        selected_item = tree.selection()
+        if not selected_item:
+            messagebox.showwarning("No Task Selected", "Please select a task.")
+            return
+        
+        selected_task_id = tree.item(selected_item, "values")[0]
+        
+        conn = sqlite3.connect('todo.db')
+        c = conn.cursor()
+        c.execute("UPDATE tasks SET status='Not Completed' WHERE id=?", (selected_task_id,))
+        conn.commit()
+        
+        # Update the Treeview display
+        tree.item(selected_item, values=(tree.item(selected_item, "values")[:-1] + ('Not Completed',)))
+        
+        conn.close()
+        
+        messagebox.showinfo("Task Status Updated", "Task completion has been undone.")
+
+        # Refresh the treeview
+        refresh_treeview()
+
+    def refresh_treeview():
+        # Clear existing items from the treeview
+        for item in tree.get_children():
+            tree.delete(item)
+
+        # Fetch tasks from the database again and insert them into the treeview
+        conn = sqlite3.connect('todo.db')
+        c = conn.cursor()
+        c.execute("SELECT * FROM tasks WHERE user_id=?", (user_id,))
+        tasks = c.fetchall()
+        conn.close()
+
+        if tasks:
+            for task in tasks:
+                tree.insert("", "end", values=task)  # Include the ID in the displayed task info
+        else:
+            messagebox.showinfo("No Tasks Found", "No tasks found for this user.")
+
+    def back_to_main_app():
+        task_list_window.destroy()  # Close the task list window
+        open_main_app_page(user_id)  # Open the main app window again
+
+
+    def sort_tasks(event=None):
+        # Fetch tasks from the database again
+        conn = sqlite3.connect('todo.db')
+        c = conn.cursor()
+        c.execute("SELECT * FROM tasks WHERE user_id=?", (user_id,))
+        tasks = c.fetchall()
+        conn.close()
+
+        sort_option = sort_var.get()
+        if sort_option == "Priority":
+            sorted_tasks = sorted(tasks, key=lambda x: ("Urgent", "High", "Medium", "Low").index(x[4]))
+        elif sort_option == "End Date":
+            sorted_tasks = sorted(tasks, key=lambda x: x[3])
+        elif sort_option == "Status":
+            sorted_tasks = sorted(tasks, key=lambda x: ("Not Completed", "Completed").index(x[6]))
+        else:  # Default sorting
+            sorted_tasks = tasks
+        
+        # Clear existing items from the treeview
+        for item in tree.get_children():
+            tree.delete(item)
+
+        # Insert sorted tasks into the treeview
+        if sorted_tasks:
+            for task in sorted_tasks:
+                tree.insert("", "end", values=task)  # Include the ID in the displayed task info
+        else:
+            messagebox.showinfo("No Tasks Found", "No tasks found for this user.")
+
+
     task_list_window = tk.Toplevel(root)
     task_list_window.title("Task List")
 
-    tree = ttk.Treeview(task_list_window, columns=("Title", "Start Date", "End Date", "Priority", "Description"), show="headings")
+    tree = ttk.Treeview(task_list_window, columns=("ID", "Title", "Start Date", "End Date", "Priority", "Description", "Status"), show="headings")
+    tree.heading("ID", text="ID")  # New column for task ID
     tree.heading("Title", text="Title")
     tree.heading("Start Date", text="Start Date")
     tree.heading("End Date", text="End Date")
     tree.heading("Priority", text="Priority")
     tree.heading("Description", text="Description")
+    tree.heading("Status", text="Status")  
+
     tree.pack(expand=True, fill="both")
 
     conn = sqlite3.connect('todo.db')
@@ -53,11 +156,47 @@ def open_task_list(user_id):
 
     if tasks:
         for task in tasks:
-            tree.insert("", "end", values=task[1:])  # Exclude the ID from the displayed task info
+            tree.insert("", "end", values=task)  # Include the ID in the displayed task info
     else:
         messagebox.showinfo("No Tasks Found", "No tasks found for this user.")
+    
+    # Sort Option Dropdown
+    sort_var = tk.StringVar()
+    sort_var.set("Default")
+    sort_option_menu = ttk.OptionMenu(task_list_window, sort_var, "Default", "Default", "Priority", "End Date", "Status", command=sort_tasks)
+    sort_option_menu.pack(pady=5)
+
+    # Mark as Completed Button
+    mark_completed_button = tk.Button(task_list_window, text="Mark as Completed", command=mark_as_completed)
+    mark_completed_button.pack(pady=5)
+
+    # Undo Completion Button
+    undo_completion_button = tk.Button(task_list_window, text="Undo Completion", command=undo_completion)
+    undo_completion_button.pack(pady=5)
+
+    # Back Button
+    back_button = tk.Button(task_list_window, text="Back", command=back_to_main_app)
+    back_button.pack(pady=5)
 
 def open_main_app_page(user_id):
+    def add_task(user_id, title, start_date, end_date, priority, description, title_entry, start_date_entry, end_date_entry, description_entry):
+        conn = sqlite3.connect('todo.db')
+        c = conn.cursor()
+        c.execute("INSERT INTO tasks (title, start_date, end_date, priority, description, status, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)", (title, start_date, end_date, priority, description, "Not Completed", user_id))
+        conn.commit()
+        conn.close()
+        messagebox.showinfo("Task Added", "Task has been added to the list.")
+
+        # Clear entry fields after adding the task
+        title_entry.delete(0, tk.END)
+        start_date_entry.delete(0, tk.END)
+        end_date_entry.delete(0, tk.END)
+        description_entry.delete(0, tk.END)
+
+    def show_tasks_and_close_main_app(main_app_window, user_id):
+        main_app_window.destroy()  # Close the main app window
+        open_task_list(user_id)  # Open the task list window
+
     main_app_window = tk.Toplevel(root)
     main_app_window.title("To-Do List App")
 
@@ -71,9 +210,12 @@ def open_main_app_page(user_id):
     # Entry Fields
     title_entry = tk.Entry(main_app_window)
     title_entry.grid(row=0, column=1, padx=10, pady=5)
-    start_date_entry = tk.Entry(main_app_window)
+
+    # Start Date and End Date Entry Fields using DateEntry widget
+    start_date_entry = DateEntry(main_app_window, date_pattern='yyyy-mm-dd')
     start_date_entry.grid(row=1, column=1, padx=10, pady=5)
-    end_date_entry = tk.Entry(main_app_window)
+
+    end_date_entry = DateEntry(main_app_window, date_pattern='yyyy-mm-dd')
     end_date_entry.grid(row=2, column=1, padx=10, pady=5)
 
     # Priority Radio Buttons
@@ -87,7 +229,7 @@ def open_main_app_page(user_id):
     description_entry.grid(row=4, column=1, padx=10, pady=5)
 
     # Add to List Button
-    add_button = tk.Button(main_app_window, text="Add to List", command=lambda: add_task(user_id, title_entry.get(), start_date_entry.get(), end_date_entry.get(), priority_var.get(), description_entry.get()))
+    add_button = tk.Button(main_app_window, text="Add to List", command=lambda: add_task(user_id, title_entry.get(), start_date_entry.get(), end_date_entry.get(), priority_var.get(), description_entry.get(), title_entry, start_date_entry, end_date_entry, description_entry))
     add_button.grid(row=5, column=0, columnspan=2, padx=10, pady=5, sticky="we")
 
     # Logout Button
@@ -95,16 +237,8 @@ def open_main_app_page(user_id):
     logout_button.grid(row=6, column=0, columnspan=2, padx=10, pady=5, sticky="we")
 
     # Show Tasks Button
-    show_tasks_button = tk.Button(main_app_window, text="Show Tasks", command=lambda: open_task_list(user_id))
+    show_tasks_button = tk.Button(main_app_window, text="Show Tasks", command=lambda: show_tasks_and_close_main_app(main_app_window, user_id))
     show_tasks_button.grid(row=7, column=0, columnspan=2, padx=10, pady=5, sticky="we")
-
-def add_task(user_id, title, start_date, end_date, priority, description):
-    conn = sqlite3.connect('todo.db')
-    c = conn.cursor()
-    c.execute("INSERT INTO tasks (title, start_date, end_date, priority, description, user_id) VALUES (?, ?, ?, ?, ?, ?)", (title, start_date, end_date, priority, description, user_id))
-    conn.commit()
-    conn.close()
-    messagebox.showinfo("Task Added", "Task has been added to the list.")
 
 def signup():
     global signup_window
@@ -190,7 +324,7 @@ username_entry.grid(row=0, column=1, padx=10, pady=5)
 password_entry = tk.Entry(root, show="*")
 password_entry.grid(row=1, column=1, padx=10, pady=5)
 
-login_button = tk.Button(root, text="Login", command=login)
+login_button = tk.Button(root, text="Login", command=lambda: login(username_entry, password_entry))
 login_button.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="we")
 
 signup_button = tk.Button(root, text="Go to Signup Page", command=signup)
