@@ -4,6 +4,10 @@ import sqlite3
 import re
 from tkcalendar import DateEntry
 
+
+def open_fullscreen_window(window):
+    window.attributes('-fullscreen', True)
+
 def create_table():
     conn = sqlite3.connect('todo.db')
     c = conn.cursor()
@@ -17,25 +21,98 @@ def create_table():
 def login(username_entry, password_entry):
     username = username_entry.get()
     password = password_entry.get()
-    
-    conn = sqlite3.connect('todo.db')
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
-    result = c.fetchone()
-    conn.close()
-    
-    if result:
-        messagebox.showinfo("Login Successful", "Welcome, " + username + "!")
-        open_main_app_page(result[0])  # Pass the user_id to the main app page
+
+    if username == "admin" and password == "password":
+        messagebox.showinfo("Login Successful", "Welcome, Admin!")
+        open_admin_dashboard()
         root.withdraw()  # Hide the root window
         # Clear the entry fields
         username_entry.delete(0, tk.END)
         password_entry.delete(0, tk.END)
     else:
-        messagebox.showerror("Login Failed", "Invalid username or password")
+        conn = sqlite3.connect('todo.db')
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
+        result = c.fetchone()
+        conn.close()
+
+        if result:
+            messagebox.showinfo("Login Successful", "Welcome, " + username + "!")
+            open_main_app_page(result[0])  # Pass the user_id to the main app page
+            root.withdraw()  # Hide the root window
+            # Clear the entry fields
+            username_entry.delete(0, tk.END)
+            password_entry.delete(0, tk.END)
+        else:
+            messagebox.showerror("Login Failed", "Invalid username or password")
+
+def open_admin_dashboard():
+    def logout_admin():
+        admin_dashboard_window.destroy()  # Close the admin dashboard window
+        root.deiconify()  # Show the login page
+
+    def delete_user():
+        selected_item = tree.selection()
+        if not selected_item:
+            messagebox.showwarning("No User Selected", "Please select a user.")
+            return
+
+        # Get the username to display in the confirmation message
+        username = tree.item(selected_item, "values")[0]
+
+        # Ask for confirmation
+        confirm = messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete the user '{username}'?")
+
+        if confirm:
+            conn = sqlite3.connect('todo.db')
+            c = conn.cursor()
+            c.execute("DELETE FROM users WHERE username=?", (username,))
+            conn.commit()
+            conn.close()
+
+            # Remove the user from the treeview
+            tree.delete(selected_item)
+
+            messagebox.showinfo("User Deleted", f"User '{username}' has been deleted successfully.")
+
+    admin_dashboard_window = tk.Toplevel(root)
+    admin_dashboard_window.title("Admin Dashboard")
+
+    # Create a Treeview widget with only the defined columns displayed
+    tree = ttk.Treeview(admin_dashboard_window, columns=("Username", "First Name", "Last Name", "Email", "Age", "Sex"), show="headings")
+    tree.heading("Username", text="Username")
+    tree.heading("First Name", text="First Name")
+    tree.heading("Last Name", text="Last Name")
+    tree.heading("Email", text="Email")
+    tree.heading("Age", text="Age")
+    tree.heading("Sex", text="Sex")
+    tree.pack(expand=True, fill="both")
+
+    # Fetch users from the database
+    conn = sqlite3.connect('todo.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM users")
+    users = c.fetchall()
+    conn.close()
+
+    # Insert user information into the Treeview
+    if users:
+        for user in users:
+            # Insert user information with correct column order
+            tree.insert("", "end", values=(user[0], user[2], user[3], user[4], user[5], user[6]))
+    else:
+        messagebox.showinfo("No Users Found", "No users found in the database.")
+
+    # Delete User Button
+    delete_user_button = tk.Button(admin_dashboard_window, text="Delete User", command=delete_user)
+    delete_user_button.pack(pady=10)
+
+    # Logout Button
+    logout_button = tk.Button(admin_dashboard_window, text="Logout", command=logout_admin)
+    logout_button.pack(pady=10)
 
 def open_task_list(user_id):
-    def mark_as_completed():  
+    def mark_as_completed():
         selected_item = tree.selection()
         if not selected_item:
             messagebox.showwarning("No Task Selected", "Please select a task.")
@@ -57,6 +134,32 @@ def open_task_list(user_id):
 
         # Refresh the treeview
         refresh_treeview()
+
+    def delete_task():
+        selected_item = tree.selection()
+        if not selected_item:
+            messagebox.showwarning("No Task Selected", "Please select a task.")
+            return
+
+        # Get the task title to display in the confirmation message
+        task_title = tree.item(selected_item, "values")[1]
+
+        # Ask for confirmation
+        confirm = messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete this task '{task_title}'?")
+
+        if confirm:
+            selected_task_id = tree.item(selected_item, "values")[0]
+
+            conn = sqlite3.connect('todo.db')
+            c = conn.cursor()
+            c.execute("DELETE FROM tasks WHERE id=?", (selected_task_id,))
+            conn.commit()
+            conn.close()
+
+            # Remove the task from the treeview
+            tree.delete(selected_item)
+
+            messagebox.showinfo("Task Deleted", "Task has been deleted successfully.")
 
     def undo_completion():
         selected_item = tree.selection()
@@ -133,6 +236,23 @@ def open_task_list(user_id):
         else:
             messagebox.showinfo("No Tasks Found", "No tasks found for this user.")
 
+    def display_full_description(event):
+        selected_item = tree.selection()
+        if not selected_item:
+            return
+        selected_task_id = tree.item(selected_item, "values")[0]
+
+        conn = sqlite3.connect('todo.db')
+        c = conn.cursor()
+        c.execute("SELECT description FROM tasks WHERE id=?", (selected_task_id,))
+        description = c.fetchone()[0]
+        conn.close()
+
+        messagebox.showinfo("Task Description", description)
+
+    def on_double_click(event):
+        display_full_description(event)
+
 
     task_list_window = tk.Toplevel(root)
     task_list_window.title("Task List")
@@ -144,7 +264,9 @@ def open_task_list(user_id):
     tree.heading("End Date", text="End Date")
     tree.heading("Priority", text="Priority")
     tree.heading("Description", text="Description")
-    tree.heading("Status", text="Status")  
+    tree.heading("Status", text="Status")
+
+    tree.bind("<Double-1>", on_double_click)  # Double-click event binding
 
     tree.pack(expand=True, fill="both")
 
@@ -173,6 +295,10 @@ def open_task_list(user_id):
     # Undo Completion Button
     undo_completion_button = tk.Button(task_list_window, text="Undo Completion", command=undo_completion)
     undo_completion_button.pack(pady=5)
+
+    # Delete Task Button
+    delete_task_button = tk.Button(task_list_window, text="Delete Task", command=delete_task)
+    delete_task_button.pack(pady=5)
 
     # Back Button
     back_button = tk.Button(task_list_window, text="Back", command=back_to_main_app)
@@ -280,6 +406,17 @@ def signup():
     signup_button = tk.Button(signup_window, text="Sign Up", command=validate_signup)
     signup_button.grid(row=7, column=0, columnspan=2, padx=10, pady=5, sticky="we")
 
+    # Back to Login Button
+    back_to_login_button = tk.Button(signup_window, text="Back to Login", command=lambda: back_to_login(signup_window))
+    back_to_login_button.grid(row=8, column=0, columnspan=2, padx=10, pady=5, sticky="we")
+
+    # Hide the login window (root)
+    root.withdraw()
+
+def back_to_login(window):
+    window.destroy()
+    root.deiconify()  # Show the root window (login page)
+
 def validate_signup():
     first_name = first_name_entry.get()
     last_name = last_name_entry.get()
@@ -302,32 +439,82 @@ def validate_signup():
         c.execute("INSERT INTO users (username, password, first_name, last_name, email, age, sex) VALUES (?, ?, ?, ?, ?, ?, ?)", (username, password, first_name, last_name, email, age, sex))
         conn.commit()
         messagebox.showinfo("Sign Up Successful", "Account created successfully!")
-        signup_window.destroy()
+        # Clear the entry fields
+        first_name_entry.delete(0, tk.END)
+        last_name_entry.delete(0, tk.END)
+        email_entry.delete(0, tk.END)
+        age_entry.delete(0, tk.END)
+        username_entry.delete(0, tk.END)
+        password_entry.delete(0, tk.END)
     except sqlite3.IntegrityError:
         messagebox.showerror("Sign Up Failed", "Username already exists!")
     conn.close()
+
+def close_root():
+    root.destroy()
 
 def logout(main_app_window):
     main_app_window.destroy()
     root.deiconify()  # Show the root window (login page)
 
+# Create the main window (root)
 root = tk.Tk()
-root.title("To-Do List App")
+root.title("WELCOME")
+
+# Create database table if not exists
 create_table()
 
-# Login Page
-tk.Label(root, text="Username:").grid(row=0, column=0, padx=10, pady=5, sticky="e")
-tk.Label(root, text="Password:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
+# PanedWindow for signup and login sections
+paned_window = tk.PanedWindow(root, orient=tk.HORIZONTAL)
+paned_window.pack(fill=tk.BOTH, expand=True)
 
-username_entry = tk.Entry(root)
-username_entry.grid(row=0, column=1, padx=10, pady=5)
-password_entry = tk.Entry(root, show="*")
-password_entry.grid(row=1, column=1, padx=10, pady=5)
+# Signup Section
+signup_frame = tk.Frame(paned_window)
+paned_window.add(signup_frame)
+tk.Label(signup_frame, text="Sign Up", font=("Helvetica", 16)).grid(row=0, column=0, columnspan=2, pady=10)
+tk.Label(signup_frame, text="First Name:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
+tk.Label(signup_frame, text="Last Name:").grid(row=2, column=0, padx=10, pady=5, sticky="e")
+tk.Label(signup_frame, text="Email Address:").grid(row=3, column=0, padx=10, pady=5, sticky="e")
+tk.Label(signup_frame, text="Age:").grid(row=4, column=0, padx=10, pady=5, sticky="e")
+tk.Label(signup_frame, text="Sex:").grid(row=5, column=0, padx=10, pady=5, sticky="e")
+tk.Label(signup_frame, text="Username:").grid(row=6, column=0, padx=10, pady=5, sticky="e")
+tk.Label(signup_frame, text="Password:").grid(row=7, column=0, padx=10, pady=5, sticky="e")
 
-login_button = tk.Button(root, text="Login", command=lambda: login(username_entry, password_entry))
-login_button.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="we")
+first_name_entry = tk.Entry(signup_frame)
+first_name_entry.grid(row=1, column=1, padx=10, pady=5)
+last_name_entry = tk.Entry(signup_frame)
+last_name_entry.grid(row=2, column=1, padx=10, pady=5)
+email_entry = tk.Entry(signup_frame)
+email_entry.grid(row=3, column=1, padx=10, pady=5)
+age_entry = tk.Entry(signup_frame)
+age_entry.grid(row=4, column=1, padx=10, pady=5)
 
-signup_button = tk.Button(root, text="Go to Signup Page", command=signup)
-signup_button.grid(row=3, column=0, columnspan=2, padx=10, pady=5, sticky="we")
+sex_var = tk.StringVar(value="Male")
+tk.Radiobutton(signup_frame, text="Male", variable=sex_var, value="Male").grid(row=5, column=1, padx=10, pady=5, sticky="w")
+tk.Radiobutton(signup_frame, text="Female", variable=sex_var, value="Female").grid(row=5, column=1, padx=10, pady=5, sticky="e")
 
+username_entry = tk.Entry(signup_frame)
+username_entry.grid(row=6, column=1, padx=10, pady=5)
+password_entry = tk.Entry(signup_frame, show="*")
+password_entry.grid(row=7, column=1, padx=10, pady=5)
+
+signup_button = tk.Button(signup_frame, text="Sign Up", command=validate_signup)
+signup_button.grid(row=8, column=0, columnspan=2, padx=10, pady=5, sticky="we")
+
+# Login Section
+login_frame = tk.Frame(paned_window)
+paned_window.add(login_frame)
+tk.Label(login_frame, text="Login", font=("Helvetica", 16)).grid(row=0, column=0, columnspan=2, pady=10)
+tk.Label(login_frame, text="Username:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
+tk.Label(login_frame, text="Password:").grid(row=2, column=0, padx=10, pady=5, sticky="e")
+
+username_entry_login = tk.Entry(login_frame)
+username_entry_login.grid(row=1, column=1, padx=10, pady=5)
+password_entry_login = tk.Entry(login_frame, show="*")
+password_entry_login.grid(row=2, column=1, padx=10, pady=5)
+
+login_button = tk.Button(login_frame, text="Login", command=lambda: login(username_entry_login, password_entry_login))
+login_button.grid(row=3, column=0, columnspan=2, padx=10, pady=5, sticky="we")
+
+open_fullscreen_window(root)
 root.mainloop()
